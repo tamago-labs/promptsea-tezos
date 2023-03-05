@@ -1,0 +1,84 @@
+archetype item(owner: address)
+
+//----------------------------------------------------------------------------
+// Constants
+//----------------------------------------------------------------------------
+constant MISSING_OWNER_CANDIDATE  : string = "MISSING_OWNER_CANDIDATE"
+constant INVALID_CALLER           : string = "INVALID_CALLER"
+constant CONTRACT_PAUSED          : string = "CONTRACT_PAUSED"
+constant CONTRACT_NOT_PAUSED      : string = "CONTRACT_NOT_PAUSED"
+
+//----------------------------------------------------------------------------
+// Owner role transfer
+//----------------------------------------------------------------------------
+
+variable owner_candidate : option<address> = none
+
+/**
+* Declares candidate for ownership
+* @param candidate address
+*/
+entry declare_ownership(candidate : address) {
+  called by owner
+  effect {
+    owner_candidate := some(candidate);
+  }
+}
+
+/**
+* Claims ownership of the contract
+* Note: fails if caller is not declared candidate
+*/
+entry claim_ownership() {
+  constant {
+    owner_candidate_addr ?is owner_candidate otherwise MISSING_OWNER_CANDIDATE;
+  }
+  require {
+    co1: owner_candidate_addr = caller otherwise INVALID_CALLER
+  }
+  effect {
+    owner := owner_candidate_addr;
+    owner_candidate := none
+  }
+}
+
+
+//----------------------------------------------------------------------------
+// Contract execution pause/resume
+//----------------------------------------------------------------------------
+
+variable paused : bool = false
+
+/**
+ * Pause the contract execution
+ */
+entry pause() {
+  called by owner
+  require {
+    pausable_r1: is_not_paused()
+  }
+  effect {
+    paused := true
+  }
+}
+
+/**
+ * Resume the contract execution
+ */
+entry unpause() {
+  called by owner
+  require {
+    pausable_r2: paused otherwise CONTRACT_NOT_PAUSED
+  }
+  effect {
+    paused := false
+  }
+}
+
+/**
+ * Asserts that the contract execution is not paused
+ */
+function is_not_paused() : bool {
+  do_fail_if(paused, CONTRACT_PAUSED);
+  return true
+}
