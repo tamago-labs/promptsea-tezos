@@ -7,6 +7,12 @@ constant MISSING_OWNER_CANDIDATE  : string = "MISSING_OWNER_CANDIDATE"
 constant INVALID_CALLER           : string = "INVALID_CALLER"
 constant CONTRACT_PAUSED          : string = "CONTRACT_PAUSED"
 constant CONTRACT_NOT_PAUSED      : string = "CONTRACT_NOT_PAUSED"
+constant CALLER_NOT_OWNER         : string = "CALLER_NOT_OWNER"
+constant INITIAL_AMOUNT_INVALID : string = "INITIAL_AMOUNT_INVALID"
+constant MAX_SUPPLY_INVALID : string = "MAX_SUPPLY_INVALID"
+constant PRICE_INVALID : string = "PRICE_INVALID"
+constant FA2_TOKEN_UNDEFINED      : string = "FA2_TOKEN_UNDEFINED"
+constant NOT_AUTHORIZED : string = "NOT_AUTHORIZED"
 
 //----------------------------------------------------------------------------
 // Owner role transfer
@@ -82,3 +88,254 @@ function is_not_paused() : bool {
   do_fail_if(paused, CONTRACT_PAUSED);
   return true
 }
+
+//----------------------------------------------------------------------------
+// Data types
+//----------------------------------------------------------------------------
+
+asset ledger identified by lowner ltokenid to big_map {
+  lowner     : address;
+  ltokenid : nat;
+  lamount    : nat = 0;
+}
+
+asset token_metadata to big_map {
+    mtoken_metadata : nat;
+    mtoken_id        : nat;
+    mtoken_info      : map<string, bytes>;
+} 
+
+asset token_price identified by ptoken to big_map {
+  ptoken : nat;
+  pprice : tez = 1tz;
+}
+
+asset token_supply identified by stoken to big_map {
+  stoken: nat;
+  smax_supply: nat;
+  scurrent_supply: nat;
+}
+
+// asset operators identified by oaddr otoken oowner to big_map {
+//   oaddr       : address;
+//   otoken      : nat;
+//   oowner      : address;
+//   ounit       : unit = Unit;
+// }
+
+// record operator_param {
+//   opp_owner    : address;
+//   opp_operator : address;
+//   opp_token_id : nat
+// } as ((owner, (operator, token_id)))
+
+// record transfer_destination {
+//   to_dest           : address;
+//   token_id_dest     : nat;
+//   token_amount_dest : nat
+// } as ((%to, (token_id, amount)))
+
+record balance_of_request {
+  bo_owner : address;
+  btoken_id : nat;
+} as ((owner, token_id))
+
+record balance_of_response {
+  request : balance_of_request;
+  balance_ : nat;
+} as ((request, balance))
+
+//----------------------------------------------------------------------------
+// Operators
+//----------------------------------------------------------------------------
+
+/**
+* Adds or removes operators for specified tokens
+* @param upl list of add or remove operator specification
+*/
+// entry update_operators (upl : list<or<operator_param, operator_param>>) {
+//   require { r0 : is_not_paused() }
+//   effect {
+//     for up in upl do
+//       match up with
+//       | left(param)  -> (* add *)
+//         do_require(param.opp_owner = caller , CALLER_NOT_OWNER);
+//         operators.add_update((param.opp_operator, param.opp_token_id, param.opp_owner), {})
+//       | right(param) -> (* remove *)
+//         do_require(param.opp_owner = caller , CALLER_NOT_OWNER);
+//         operators.remove((param.opp_operator, param.opp_token_id, param.opp_owner))
+//       end;
+//     done;
+//   }
+// }
+
+// function check_owner_and_operator(txs : list<address * list<transfer_destination>>) : bool {
+//   var res = true;
+
+//   for tx in txs do
+//     const %from = tx[0];
+//     const tds = tx[1];
+//     for td in tds do begin
+//       res &=
+//         if caller <> %from then
+//           (operators.contains((caller,td.token_id_dest,%from)))
+//         else
+//           ledger.contains((td.token_id_dest, caller));
+//     end
+//     done
+//   done;
+//   return res
+// }
+
+//----------------------------------------------------------------------------
+// NFT functions
+//----------------------------------------------------------------------------
+
+variable token_id_count : nat = 0
+variable token_owners : map<nat, address> = []
+
+getter get_token_price (token_id : nat) : tez {
+  return token_price[token_id].pprice
+}
+
+getter get_current_supply( token_id : nat ) : nat {
+  return token_supply[token_id].scurrent_supply
+}
+
+getter get_max_supply( token_id : nat) : nat {
+  return token_supply[token_id].smax_supply
+}
+
+getter uri(token_id : nat) : map<string, bytes> {
+  return token_metadata[token_id].mtoken_info
+}
+
+getter current_token_id() : nat {
+  return token_id_count
+}
+
+getter token_owner(token_id : nat) : option<address> {
+  return token_owners[token_id]
+}
+
+function get_balance(br : balance_of_request) : nat {
+  do_require(token_metadata.contains(br.btoken_id), FA2_TOKEN_UNDEFINED);
+  return (ledger[(br.bo_owner, br.btoken_id)] ? the.lamount : 0)
+}
+
+getter balance_of(requests : list<balance_of_request>) : list<balance_of_response> {
+  return map(requests, br ->
+    {
+      request = br;
+      balance_ = get_balance(br)
+    })
+}
+
+entry authorise(itokenMetadata: map<string, bytes>, initial_amount : nat, price : tez, max_supply : nat) {
+  no transfer
+  require {
+    fa2_r1 : initial_amount > 0 otherwise INITIAL_AMOUNT_INVALID;
+    fa2_r2 : max_supply >= initial_amount otherwise MAX_SUPPLY_INVALID;
+    fa2_r3 : price > 0tz otherwise PRICE_INVALID;
+    fa2_r4 : is_not_paused();
+  }
+  effect {
+    token_id_count += 1;
+    token_owners.put( token_id_count, caller );
+
+    // first mint
+    token_metadata.add({mtoken_metadata = token_id_count; mtoken_id = token_id_count; mtoken_info = itokenMetadata});
+    ledger.add({ lowner = caller; ltokenid = token_id_count;  lamount = initial_amount });
+
+    // set the price
+    token_price.add({ ptoken = token_id_count; pprice = price });
+    // set supply
+    token_supply.add({ stoken = token_id_count; smax_supply = max_supply; scurrent_supply = initial_amount });
+  }
+}
+
+entry set_token_uri( token_id : nat, tdata: map<string, bytes>) {
+  no transfer
+  require {
+    fa2_r5 : some(caller) = token_owners[token_id] otherwise NOT_AUTHORIZED;
+    fa2_r6 : is_not_paused();
+  }
+  effect {
+    token_metadata.add_update( token_id, { mtoken_id = token_id; mtoken_info = tdata});
+  }
+}
+
+entry set_token_price( token_id : nat , new_token_price : tez ) {
+  no transfer
+  require {
+    fa2_r7 : some(caller) = token_owners[token_id] otherwise NOT_AUTHORIZED;
+    fa2_r8 : is_not_paused();
+    fa2_r9 : new_token_price > 0tz otherwise PRICE_INVALID;
+  }
+  effect {
+    token_price.add_update( token_id, { pprice = new_token_price } );
+  }
+}
+
+// entry transferTokenOwner( tokenId, newOwner) {
+
+// }
+
+// entry mint(to, tokenId, value) {
+
+// }
+
+// entry burn(owner, tokenId, value) {
+
+// }
+
+// entry withdraw(toAddress, amount) {
+
+// }
+
+// entry setFees(platformFee) {
+
+// }
+
+// entry do_transfer(txs : list<transfer_param>) {
+//   no transfer
+//   called by self_address
+//   effect {
+//     for tx in txs do
+//       const %from = tx.tp_from;
+//       const tds   = tx.tp_txs;
+//       for td in tds do begin
+//         const tid = td.token_id_dest;
+//         do_require(token_metadata.contains(tid), FA2_TOKEN_UNDEFINED);
+//         const amount = ledger[(%from, tid)]?.lamount ? the : 0;
+//         const new_amount ?=
+//             int_to_nat(amount - td.token_amount_dest) : FA2_INSUFFICIENT_BALANCE;
+//         if new_amount = 0 then
+//           ledger.remove((%from, tid))
+//         else begin
+//           ledger.update((%from, tid), { lamount := new_amount });
+//         end;
+//         ledger.add_update((td.to_dest, tid), { lamount += td.token_amount_dest })
+//       end done
+//     done
+//   }
+// }
+
+// entry %transfer (txs : list<transfer_param>) {
+//   no transfer
+//   require { fa2_r4 : is_not_paused() }
+//   effect {
+//     if not check_operator(txs) then begin
+//       match get_from(txs) with
+//       | some(%from) ->
+//         transfer 0tz to permits
+//           call consume<address * bytes * string>((%from, blake2b(pack(txs)), FA2_NOT_OPERATOR))
+//       | none -> ()
+//       end
+//     end;
+
+//     transfer 0tz to entry self.do_transfer(txs);
+//   }
+// }
+
+
