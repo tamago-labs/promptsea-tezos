@@ -13,12 +13,16 @@ constant MAX_SUPPLY_INVALID : string = "MAX_SUPPLY_INVALID"
 constant PRICE_INVALID : string = "PRICE_INVALID"
 constant FA2_TOKEN_UNDEFINED      : string = "FA2_TOKEN_UNDEFINED"
 constant NOT_AUTHORIZED : string = "NOT_AUTHORIZED"
+constant MAX_SUPPLY_SUCCEED : string = "MAX_SUPPLY_SUCCEED"
+constant OWNER_NOT_SET : string = "OWNER_NOT_SET"
 
 //----------------------------------------------------------------------------
 // Owner role transfer
 //----------------------------------------------------------------------------
 
 variable owner_candidate : option<address> = none
+variable fee : rational = 0.1
+variable treasury : address = owner
 
 /**
 * Declares candidate for ownership
@@ -277,13 +281,40 @@ entry set_token_price( token_id : nat , new_token_price : tez ) {
   }
 }
 
-// entry transferTokenOwner( tokenId, newOwner) {
+entry transfer_token_owner( token_id : nat , new_owner : address) {
+  no transfer
+  require {
+    fa2_r10 : some(caller) = token_owners[token_id] otherwise NOT_AUTHORIZED;
+    fa2_r11 : is_not_paused();
+  }
+  effect {
+    token_owners.put( token_id, new_owner);
+  }
+}
 
-// }
+entry mint(recipient : address, token_id : nat, value : nat) {
+  constant {
+    token_owner_address ?is token_owners[token_id] otherwise OWNER_NOT_SET;
+  }
+  require {
+    fa2_r12: token_supply[token_id].smax_supply >= (token_supply[token_id].scurrent_supply + value) otherwise MAX_SUPPLY_SUCCEED;
+    fa2_r13 : is_not_paused();
+    fa2_r14 :  transferred = token_price[token_id].pprice otherwise PRICE_INVALID;
+    fa2_r15 : value = 1 otherwise "ONE TOKEN ALLOWED";
+  }
+  effect {
+    var to_token_owner = (1 - fee) * token_price[token_id].pprice;
+    var to_treasury = token_price[token_id].pprice-to_token_owner;
+    token_supply[token_id].scurrent_supply += value;
+    
+    ledger.add_update( (recipient, token_id) , { lamount += value });
 
-// entry mint(to, tokenId, value) {
+    if (caller) <> token_owner_address then
+      transfer to_token_owner to (token_owner_address);
+      transfer to_treasury to (treasury);
+  }
 
-// }
+}
 
 // entry burn(owner, tokenId, value) {
 
@@ -293,9 +324,23 @@ entry set_token_price( token_id : nat , new_token_price : tez ) {
 
 // }
 
-// entry setFees(platformFee) {
+entry set_fees( new_fee : rational) {
+  require {
+    fa2_a1: caller = owner otherwise NOT_AUTHORIZED;
+  }
+  effect {
+    fee := new_fee;
+  }
+}
 
-// }
+entry set_treasury( new_treasury_address : address) {
+  require {
+    fa2_a2: caller = owner otherwise NOT_AUTHORIZED;
+  }
+  effect {
+    treasury := new_treasury_address;
+  }
+}
 
 // entry do_transfer(txs : list<transfer_param>) {
 //   no transfer

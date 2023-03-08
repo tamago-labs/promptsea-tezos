@@ -94,15 +94,31 @@ describe('[Item NFT] Authorize new token', async () => {
         assert(token_price.equals(new Tez(2)))
 
         // transfer token owner
-
+        await expect_to_fail(async () => {
+            await item.transfer_token_owner(
+                new Nat(1),
+                bob.get_address(),
+                {
+                    as: bob,
+                }
+            );
+        }, item.errors.fa2_r10)
+        await item.transfer_token_owner( new Nat(1) , bob.get_address() , { as : alice } )
+        const new_token_owner = await item.token_owner(new Nat(1), { as: alice })
+        assert(new_token_owner.toString() === Option.Some(bob.get_address()).toString())
 
     })
 
     it('Bob mints an NFT should succeed', async () => {
 
         // mint
+        await item.mint( bob.get_address(), new Nat(1) , new Nat(1) , { as : bob, amount : new Tez(2)})
+        const my_balance = await item.balance_of([new balance_of_request(bob.get_address(), new Nat(1))], { as: bob })
+        assert(my_balance[0].balance_.equals(new Nat(1)))
 
         // check current supply
+        const my_current_supply = await item.get_current_supply(new Nat(1), { as: bob })
+        assert(my_current_supply.equals( new Nat(2)))
     })
 
     it('Bob transfers an NFT to Carl should succeed', async () => {
