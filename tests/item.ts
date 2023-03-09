@@ -1,7 +1,7 @@
 import { Bytes, Key, Nat, Option, Tez, Or, pair_to_mich, Signature, string_to_mich } from '@completium/archetype-ts-types'
 import { blake2b, expect_to_fail, get_account, set_mockup, set_mockup_now, set_quiet } from '@completium/experiment-ts'
 
-import { item, balance_of_request } from './binding/item';
+import { item, balance_of_request, transfer_param, transfer_destination } from './binding/item';
 
 const assert = require('assert');
 
@@ -93,19 +93,6 @@ describe('[Item NFT] Authorize new token', async () => {
         const token_price = await item.get_token_price(new Nat(1), { as: alice })
         assert(token_price.equals(new Tez(2)))
 
-        // transfer token owner
-        await expect_to_fail(async () => {
-            await item.transfer_token_owner(
-                new Nat(1),
-                bob.get_address(),
-                {
-                    as: bob,
-                }
-            );
-        }, item.errors.fa2_r10)
-        await item.transfer_token_owner( new Nat(1) , bob.get_address() , { as : alice } )
-        const new_token_owner = await item.token_owner(new Nat(1), { as: alice })
-        assert(new_token_owner.toString() === Option.Some(bob.get_address()).toString())
 
     })
 
@@ -122,14 +109,50 @@ describe('[Item NFT] Authorize new token', async () => {
     })
 
     it('Bob transfers an NFT to Carl should succeed', async () => {
+        const a_token_id = new Nat(1)
 
+        const bob_balance_before = await item.balance_of([new balance_of_request(bob.get_address(), new Nat(1))], { as: bob })
+        assert(bob_balance_before[0].balance_.equals(new Nat(1)))
+        const carl_balance_before = await item.balance_of([new balance_of_request(carl.get_address(), new Nat(1))], { as: carl })
+        assert(carl_balance_before[0].balance_.equals(new Nat(0)))
+
+        const tps = [new transfer_param(bob.get_address(), [new transfer_destination(carl.get_address(), a_token_id, new Nat(1))])]
+
+        await item.transfer(tps, { as: bob })
+
+        const bob_balance_after = await item.balance_of([new balance_of_request(bob.get_address(), new Nat(1))], { as: bob })
+        assert(bob_balance_after[0].balance_.equals(new Nat(0)))
+        const carl_balance_after = await item.balance_of([new balance_of_request(carl.get_address(), new Nat(1))], { as: carl })
+        assert(carl_balance_after[0].balance_.equals(new Nat(1)))
     })
 
     it('Charlie burns an NFT should succeed', async () => {
 
+        await item.burn( new Nat(1), new Nat(1) , { as : carl })
+
+        const carl_balance = await item.balance_of([new balance_of_request(carl.get_address(), new Nat(1))], { as: carl })
+        assert(carl_balance[0].balance_.equals(new Nat(0)))
+
+        const total = await item.get_total_burnt(new Nat(1), { as: carl })
+        assert(total.equals( new Nat(1)))
+
     })
 
     it('Alice transfers ownership to Bob should succeed', async () => {
+
+        // transfer token owner
+        await expect_to_fail(async () => {
+            await item.transfer_token_owner(
+                new Nat(1),
+                bob.get_address(),
+                {
+                    as: bob,
+                }
+            );
+        }, item.errors.fa2_r10)
+        await item.transfer_token_owner( new Nat(1) , bob.get_address() , { as : alice } )
+        const new_token_owner = await item.token_owner(new Nat(1), { as: alice })
+        assert(new_token_owner.toString() === Option.Some(bob.get_address()).toString())
 
     })
 
