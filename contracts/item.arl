@@ -181,39 +181,41 @@ asset operators identified by oaddr otoken oowner to big_map {
 // Operators
 //----------------------------------------------------------------------------
 
-/**
-* Adds or removes operators for specified tokens
-* @param upl list of add or remove operator specification
-*/
-entry update_operators (upl : list<or<operator_param, operator_param>>) {
-  require { r0 : is_not_paused() }
+enum update_op =
+| add_operator<operator_param>
+| remove_operator<operator_param>
+
+entry update_operators (upl : list<update_op>) {
+  no transfer
+  require { operator_r1 : is_not_paused() }
   effect {
     for up in upl do
       match up with
-      | left(param)  -> (* add *)
-        do_require(param.opp_owner = caller , CALLER_NOT_OWNER);
+      | add_operator(param) -> (* add *)
+        do_require(param.opp_owner = caller , "FA2_NOT_OWNER");
         operators.add_update((param.opp_operator, param.opp_token_id, param.opp_owner), {})
-      | right(param) -> (* remove *)
-        do_require(param.opp_owner = caller , CALLER_NOT_OWNER);
-        operators.remove((param.opp_operator, param.opp_token_id, param.opp_owner))
+      | remove_operator(param) -> (* remove *)
+        do_require(param.opp_owner = caller , "FA2_NOT_OWNER");
+         operators.remove((param.opp_operator, param.opp_token_id, param.opp_owner))
       end;
     done;
   }
 }
 
-/**
-* Adds or removes an operator for *all* transfers for caller's tokens
-* @param upl list of add or remove operator address
-*/
-entry update_operators_for_all (upl : list<or<address, address>>) {
-  require { r1 : is_not_paused() }
+enum update_for_all_op =
+| add_for_all<address>
+| remove_for_all<address>
+
+entry update_operators_for_all (upl : list<update_for_all_op>) {
+  no transfer
+  require { operator_r2 : is_not_paused() }
   effect {
     for up in upl do
       match up with
-      | left(op)  -> (* add *)
-        operators_for_all.add_update((op, caller), {})
-      | right(op) -> (* remove *)
-        operators_for_all.remove((op, caller))
+      | add_for_all(op)  ->
+          operators_for_all.add_update((op, caller), {})
+      | remove_for_all(op) ->
+         operators_for_all.remove((op, caller))
       end;
     done;
   }
