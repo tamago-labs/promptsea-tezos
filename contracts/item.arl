@@ -219,12 +219,12 @@ entry update_operators_for_all (upl : list<or<address, address>>) {
   }
 }
 
-function check_owner_and_operator(txs : list<address * list<transfer_destination>>) : bool {
+function check_owner_and_operator(txs : list<transfer_param>) : bool {
   var res = true;
 
   for tx in txs do
-    const %from = tx[0];
-    const tds = tx[1];
+     const %from = tx.tp_from;
+    const tds = tx.tp_txs;
     for td in tds do begin
       res &=
         if caller <> %from then
@@ -243,12 +243,12 @@ function check_owner_and_operator(txs : list<address * list<transfer_destination
 // FA2 transfer (with permit check)
 //----------------------------------------------------------------------------
 
-function get_from_address(txs : list<address * list<transfer_destination>>) : option<address> {
+function get_from_address(txs : list<transfer_param>) : option<address> {
   match txs with
   | hd::tl -> begin
-    const %from = hd[0];
+    const %from = hd.tp_from;
     for tx in tl do
-      do_require(%from = tx[0], "FA2_NOT_OPERATOR")
+      do_require(%from = tx.tp_from, "FA2_NOT_OPERATOR")
     done;
     return some(%from)
   end
@@ -448,7 +448,7 @@ entry do_transfer(txs : list<transfer_param>) {
   }
 }
 
-entry %transfer (txs : list<address * list<transfer_destination>>) {
+entry %transfer (txs : list<transfer_param>) {
   require { r8 : is_not_paused() }
   effect {
     if not check_owner_and_operator(txs) then begin
@@ -461,33 +461,13 @@ entry %transfer (txs : list<address * list<transfer_destination>>) {
           then fail("FA2_NOT_OPERATOR")
           else (
             permits[%from].user_permits.remove(permit_key)
-            // const iuser_permit ?= permits[%from].user_permits[permit_key] : "NOT_FOUND";
-            // const iexpiry = get_expiry(%from, permit_key);
-            // if has_expired(iuser_permit, iexpiry)
-            // then fail("PERMIT_EXPIRED")
-            // else permits[%from].user_permits.remove(permit_key)
           );
           end
       | none -> ()
       end
     end;
 
-    for tx in txs do
-      const %from = tx[0];
-      const tds = tx[1];
-      for td in tds do begin
-        (* set token ownership *)
-        const tokenid = td.token_id_dest;
-        const amount = ledger[( %from, tokenid)].lamount;
-        if td.token_amount_dest > amount then
-          fail(FA2_INSUFFICIENT_BALANCE)
-        else if td.token_amount_dest = amount then
-          ledger.remove((%from, tokenid))
-        else
-          ledger.update(( %from, tokenid), { lamount -= td.token_amount_dest });
-        ledger.add_update((  td.to_dest, tokenid), { lamount += td.token_amount_dest })
-      end done;
-    done
+    transfer 0tz to entry self.do_transfer(txs); 
   }
 }
 
