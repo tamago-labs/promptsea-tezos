@@ -1,4 +1,4 @@
-import { Bytes, Key, Nat, Option, Tez, Or, pair_to_mich, Signature, string_to_mich } from '@completium/archetype-ts-types'
+import { Bytes, Key, Nat, Option, Tez, Or, pair_to_mich, Signature, string_to_mich, Rational } from '@completium/archetype-ts-types'
 import { blake2b, expect_to_fail, get_account, set_mockup, set_mockup_now, set_quiet } from '@completium/experiment-ts'
 
 import { item, balance_of_request, transfer_param, transfer_destination } from './binding/item';
@@ -93,7 +93,14 @@ describe('[Item NFT] Authorize new token', async () => {
         const token_price = await item.get_token_price(new Nat(1), { as: alice })
         assert(token_price.equals(new Tez(2)))
 
+        // update fee
+        let current_fee = await item.get_token_fee( new Nat(1) , {as : alice})
+        assert( current_fee.to_number() === 0.1 )
 
+        await item.set_token_fee( new Nat(1), new Rational(0.15) , {as : alice })
+
+        current_fee = await item.get_token_fee( new Nat(1) , {as : alice})
+        assert( current_fee.to_number() === 0.15)
     })
 
     it('Bob mints an NFT should succeed', async () => {
