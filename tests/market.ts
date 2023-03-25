@@ -1,4 +1,4 @@
-import { Bytes, Key, Nat, Option, Tez, Or, pair_to_mich, Signature, string_to_mich } from '@completium/archetype-ts-types'
+import { Bytes, Key, Nat, Option, Tez, Or, pair_to_mich, Signature, string_to_mich, Rational } from '@completium/archetype-ts-types'
 import { blake2b, expect_to_fail, get_account, set_mockup, set_mockup_now, set_quiet } from '@completium/experiment-ts'
 
 import { item, balance_of_request, transfer_param, transfer_destination, add_for_all } from './binding/item';
@@ -73,6 +73,25 @@ describe('[Marketplace] Trade', async () => {
         // order should inactive
         const value = await market.get_order_value( new Nat(1))
         assert(value?.ended == true)
+    })
+
+    it('Update fees should succeed', async () => {
+        
+        // create new order
+        await market.create( new Nat(2), item.get_address(), new Nat(1), new Nat(1), new Tez(1), { as : bob})
+
+        const value = await market.get_order_value( new Nat(2))
+
+        assert(value?.fee.to_number() === 0.1)
+        assert(value?.royalty.to_number() === 0.1)
+
+        await market.update_fee(new Nat(2), new Rational(0.15), { as: alice})
+        await market.update_royalty(new Nat(2), new Rational(0.2), { as: alice})
+
+        const updated_value = await market.get_order_value( new Nat(2))
+
+        assert(updated_value?.fee.to_number() === 0.15)
+        assert(updated_value?.royalty.to_number() === 0.2)
     })
 
 })

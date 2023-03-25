@@ -14,8 +14,8 @@ constant NOT_AUTHORIZED : string = "NOT_AUTHORIZED"
 //----------------------------------------------------------------------------
 
 variable owner_candidate : option<address> = none
-variable fee : rational = 0.1
-variable royalty : rational = 0.1
+variable default_fee : rational = 0.1
+variable default_royalty : rational = 0.1
 variable treasury : address = owner
  
 /**
@@ -99,6 +99,8 @@ asset order identified by orderid to big_map {
     orderowner : address;
     price : tez;
     ended: bool;
+    fee: rational;
+    royalty: rational;
 }
 
 //----------------------------------------------------------------------------
@@ -107,19 +109,28 @@ asset order identified by orderid to big_map {
 
 entry set_treasury( new_treasury_address : address) {
   require {
-    fa2_a2: caller = owner otherwise NOT_AUTHORIZED;
+    set_treasury_1: caller = owner otherwise NOT_AUTHORIZED;
   }
   effect {
     treasury := new_treasury_address;
   }
 }
 
-entry set_fees( new_fee : rational) {
+entry set_default_fee( new_fee : rational) {
   require {
-    fa2_a1: caller = owner otherwise NOT_AUTHORIZED;
+    set_fee_1: caller = owner otherwise NOT_AUTHORIZED;
   }
   effect {
-    fee := new_fee;
+    default_fee := new_fee;
+  }
+}
+
+entry set_default_royalty(new_royalty : rational) {
+  require {
+    set_royalty_1: caller = owner otherwise NOT_AUTHORIZED;
+  }
+  effect {
+    default_royalty := new_royalty;
   }
 }
 
@@ -160,6 +171,8 @@ entry create(
         token_value = ctoken_value;
         orderowner = caller;
         price = cprice;
+        fee = default_fee;
+        royalty = default_royalty;
         ended = false
       });
 
@@ -180,6 +193,26 @@ entry cancel(
   }
 }
 
+entry update_royalty(corder_id : nat, updated_royalty : rational) {
+  require {
+      update_royalty_r1: order[corder_id].ended = false otherwise "Given ID is invalid"; 
+      update_royalty_r2 : caller = owner otherwise NOT_AUTHORIZED;
+  }
+  effect {
+    order.update( corder_id , { royalty = updated_royalty } );
+  }
+}
+
+entry update_fee(corder_id : nat, updated_fee : rational) {
+  require {
+      update_fee_r1: order[corder_id].ended = false otherwise "Given ID is invalid"; 
+      update_fee_r2 : caller = owner otherwise NOT_AUTHORIZED;
+  }
+  effect {
+    order.update( corder_id , { fee = updated_fee } );
+  }
+}
+
 entry swap(corder_id : nat) {
   require {
       swap_r1: order[corder_id].ended = false otherwise "Given ID is invalid";
@@ -189,9 +222,29 @@ entry swap(corder_id : nat) {
   effect {
 
     // take
-    var to_token_owner = (1 - fee) * order[corder_id].price;
-    var to_treasury = order[corder_id].price-to_token_owner;
-    transfer to_token_owner to order[corder_id].orderowner;
+    var to_order_owner = (1 - order[corder_id].fee) * order[corder_id].price;
+    var to_token_owner = (1 - order[corder_id].royalty) * order[corder_id].price;
+    var to_treasury = order[corder_id].price-to_order_owner;
+
+    match call_view<option<address>>(
+              order[corder_id].asset_address,
+           "token_owner",
+           (
+               order[corder_id].otoken_id
+            )
+    )
+    with 
+    | some(v) -> match v with
+        | some(
+            token_owner_address) -> (transfer to_token_owner to token_owner_address;
+            to_treasury -= to_token_owner
+          )
+        | none -> ()
+        end
+    | none -> () 
+    end;
+    
+    transfer to_order_owner to order[corder_id].orderowner;
     transfer to_treasury to (treasury);
 
     // give
