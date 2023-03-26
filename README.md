@@ -6,5 +6,5 @@
 
 Contract Name | Contract Address 
 --- | --- 
-Market | KT1F9UJWrUU2WYbVhbLBKYZu85b6h5WxCJVc
-Item | KT1XVMKrYQovhp7vuu6BNx3pqLoGD4F5u2K5
+Market | KT1EVWNBxtTMWGpY8jorAi8DngzE9ne1Sy2p
+Item | KT1UW1GS7uR5ME351UvruPL263MRB4QmLQFo
