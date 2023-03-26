@@ -222,8 +222,8 @@ entry swap(corder_id : nat) {
   effect {
 
     // take
-    var to_order_owner = (1 - order[corder_id].fee) * order[corder_id].price;
-    var to_token_owner = (1 - order[corder_id].royalty) * order[corder_id].price;
+    var to_order_owner = (1 - (order[corder_id].fee + order[corder_id].royalty)) * order[corder_id].price;
+    var to_token_owner = order[corder_id].royalty * order[corder_id].price;
     var to_treasury = order[corder_id].price-to_order_owner;
 
     match call_view<option<address>>(
