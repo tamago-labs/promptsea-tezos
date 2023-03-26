@@ -298,7 +298,7 @@ getter current_token_id() : nat {
   return token_id_count
 }
 
-getter token_owner(token_id : nat) : option<address> {
+view token_owner(token_id : nat) : option<address> {
   return token_owners[token_id]
 }
 
