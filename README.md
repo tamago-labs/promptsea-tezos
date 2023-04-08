@@ -1,4 +1,4 @@
-# PromptSea's Tezos
+# Move to monorepo --> https://github.com/tamago-labs/promptsea-protocol
 
 ## Deployment
 
